@@ -1,0 +1,1 @@
+export const BASE_URL = 'https://krishiaadhar.devsomeware.com/api';
