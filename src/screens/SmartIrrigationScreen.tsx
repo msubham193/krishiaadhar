@@ -1,160 +1,404 @@
 /* eslint-disable react-native/no-inline-styles */
-import {View, Text, TouchableOpacity, TextInput} from 'react-native';
-import React, {useState} from 'react';
-import {horizontalScale, moderateScale, verticalScale} from '../utils/metrics';
-import {blue} from '../utils/Colors';
-import IoniIcon from 'react-native-vector-icons/Ionicons';
-import {StyleSheet} from 'react-native';
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  TextInput,
+  StyleSheet,
+  ActivityIndicator,
+  Platform,
+  KeyboardAvoidingView,
+  ScrollView,
+  Keyboard,
+} from 'react-native';
+import { horizontalScale, moderateScale, verticalScale } from '../utils/metrics';
+import { blue } from '../utils/Colors';
+import Ionicons from 'react-native-vector-icons/Ionicons';
+import { Snackbar } from 'react-native-paper'; // For user feedback messages
+import { BASE_URL } from '../utils/Constants'; // Assuming this constant exists
+import { useUserStore } from '../zustand/store'; // Assuming your user store handles token
+import { Picker } from '@react-native-picker/picker'; // Import Picker for dropdown
 
-const SmartIrrigationScreen = ({navigation}) => {
+// Define the enum options for irrigationType and cropType
+const irrigationTypeOptions = ["DRIP", "SPRINKLER", "SURFACE", "SUBSURFACE"];
+const cropTypeOptions = ['Cereal', 'Vegetable', 'Fruit', 'Pulses', 'Oilseeds']; // Reused from previous code
+
+const SmartIrrigationScreen = ({ navigation }) => {
+  // State variables for form inputs
   const [farmLocation, setFarmLocation] = useState('');
-  const [irrigationType, setIrrigationType] = useState('');
+  const [irrigationType, setIrrigationType] = useState(''); // This will hold the selected value
   const [areaInHectares, setAreaInHectares] = useState('');
-  const [cropType, setCropType] = useState('');
+  const [cropType, setCropType] = useState(''); // This will now hold the selected crop type
   const [query, setQuery] = useState('');
 
-  const handleSubmit = () => {
-    // Handle form submission here
-    console.log({
-      farmLocation,
-      irrigationType,
-      areaInHectares,
-      cropType,
-      query,
-    });
+  // State variables for UI feedback and API handling
+  const [submitPending, setSubmitPending] = useState(false);
+  const [error, setError] = useState('');
+  const [snackbarVisible, setSnackbarVisible] = useState(false);
 
-    navigation.goBack();
+  // Get user data (including token) from Zustand store
+  const userData = useUserStore((state) => state.userData);
+
+  // Close snackbar after a delay
+  useEffect(() => {
+    if (snackbarVisible) {
+      const timer = setTimeout(() => {
+        setSnackbarVisible(false);
+      }, 3000); // Snackbar will disappear after 3 seconds
+      return () => clearTimeout(timer);
+    }
+  }, [snackbarVisible]);
+
+  // Validation function for all form fields
+  const validateForm = () => {
+    setError(''); // Clear previous errors
+    if (!farmLocation.trim()) {
+      setError('Farm Location is required.');
+      return false;
+    }
+    // Validate irrigationType against the predefined options
+    if (!irrigationType || !irrigationTypeOptions.includes(irrigationType)) {
+      setError('Please select a valid Irrigation Type.');
+      return false;
+    }
+    const parsedArea = parseFloat(areaInHectares);
+    if (isNaN(parsedArea) || parsedArea <= 0) {
+      setError('Area in Hectares must be a positive number.');
+      return false;
+    }
+    // Validate cropType against the predefined options
+    if (!cropType || !cropTypeOptions.includes(cropType)) {
+      setError('Please select a valid Crop Type.');
+      return false;
+    }
+    if (!query.trim()) {
+      setError('Query is required.');
+      return false;
+    }
+    return true;
+  };
+
+  // Handle form submission
+  const handleSubmit = async () => {
+    if (!validateForm()) {
+      setSnackbarVisible(true); // Show snackbar if validation fails
+      return;
+    }
+
+    setSubmitPending(true); // Show loading indicator
+
+    try {
+      if (!BASE_URL) {
+        throw new Error('BASE_URL is not defined in Constants.js');
+      }
+      if (!userData?.token) {
+        throw new Error('Authentication token not found. Please log in again.');
+      }
+
+      const payload = {
+        farmLocation: farmLocation.trim(),
+        irrigationType: irrigationType, // Use the directly selected enum value
+        areaInHectares: parseFloat(areaInHectares),
+        cropType: cropType, // Use the directly selected enum value
+        query: query.trim(),
+      };
+
+      console.log('Sending payload:', JSON.stringify(payload, null, 2));
+
+      // Remove potential quotes from token if it's stringified
+      const cleanedToken = userData.token.replace(/"/g, '');
+
+      const response = await fetch(`${BASE_URL}/farmer/service/smart-irrigation`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-access-token': cleanedToken,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const responseData = await response.json();
+      console.log('API Response:', JSON.stringify(responseData, null, 2));
+
+      if (response.ok) {
+        setError(''); // Clear error on success
+        setSnackbarVisible(false); // Hide snackbar as we are navigating to a new screen
+        // Navigate to the full-screen success acknowledgment
+        navigation.navigate('SubmissionSuccess', {
+          message: 'Your smart irrigation request has been successfully submitted!',
+          navigateBackTo: 'Main', // Changed to 'Main' as it's a general home screen in your Navigation.js
+        });
+        // Optionally reset form fields here if desired, but navigation will likely unmount this component
+        setFarmLocation('');
+        setIrrigationType('');
+        setAreaInHectares('');
+        setCropType('');
+        setQuery('');
+      } else {
+        const errorMessage = responseData.message || responseData.error || 'Unknown error occurred.';
+        throw new Error(`Failed to submit request: ${errorMessage}`);
+      }
+    } catch (err) {
+      console.error('Submission error:', err);
+      setError(err.message || 'An unexpected error occurred.');
+      setSnackbarVisible(true);
+    } finally {
+      setSubmitPending(false); // Hide loading indicator
+    }
   };
 
   return (
-    <View
-      style={{
-        flex: 1,
-      }}>
-      <View
-        style={{
-          flexDirection: 'row',
-          backgroundColor: blue,
-          elevation: 5,
-          height: verticalScale(80),
-          paddingTop: verticalScale(40),
-          paddingHorizontal: horizontalScale(10),
-          alignItems: 'center',
-        }}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <IoniIcon name="arrow-back" size={25} color="white" />
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? verticalScale(40) : 0}
+    >
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={moderateScale(25)} color="white" />
         </TouchableOpacity>
-
-        <View
-          style={{
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: '90%',
-          }}>
-          <Text
-            style={{
-              fontSize: moderateScale(15),
-              textAlign: 'center',
-              color: 'white',
-              fontFamily: 'Poppins-Medium',
-            }}>
-            Smart Irrigation Service
-          </Text>
-        </View>
+        <Text style={styles.headerTitle}>Smart Irrigation Service</Text>
       </View>
 
-      <View
-        style={{
-          paddingHorizontal: horizontalScale(30),
-          marginTop: verticalScale(30),
-        }}>
+      <ScrollView
+        style={styles.formScrollView}
+        contentContainerStyle={styles.formContentContainer}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled" // Important for preventing keyboard issues
+      >
+        {/* Farm Location */}
         <Text style={styles.label}>Farm Location</Text>
         <TextInput
-          style={styles.input}
+          style={[styles.input, error.includes('Farm Location') && styles.errorInput]}
           value={farmLocation}
-          onChangeText={setFarmLocation}
+          onChangeText={(text) => {
+            setFarmLocation(text);
+            if (error.includes('Farm Location')) setError('');
+          }}
           placeholder="Enter farm location"
-          placeholderTextColor="gray" // Set placeholder text color
-        />
-
-        <Text style={styles.label}>Irrigation Type</Text>
-        <TextInput
-          style={styles.input}
-          value={irrigationType}
-          onChangeText={setIrrigationType}
-          placeholder="Enter irrigation type"
           placeholderTextColor="gray"
+          returnKeyType="next"
+          onSubmitEditing={() => Keyboard.dismiss()}
         />
 
+        {/* Irrigation Type - Now a Dropdown */}
+        <Text style={styles.label}>Irrigation Type</Text>
+        <View style={[styles.pickerContainer, error.includes('Irrigation Type') && styles.errorInput]}>
+          <Picker
+            selectedValue={irrigationType}
+            onValueChange={(itemValue) => {
+              setIrrigationType(itemValue);
+              if (error.includes('Irrigation Type')) setError('');
+            }}
+            style={styles.picker}
+          >
+            <Picker.Item label="Select Irrigation Type" value="" enabled={false} style={{ color: 'gray' }} />
+            {irrigationTypeOptions.map((type, index) => (
+              <Picker.Item key={index.toString()} label={type} value={type} />
+            ))}
+          </Picker>
+        </View>
+
+        {/* Area in Hectares */}
         <Text style={styles.label}>Area in Hectares</Text>
         <TextInput
-          style={styles.input}
+          style={[styles.input, error.includes('Area in Hectares') && styles.errorInput]}
           value={areaInHectares}
-          onChangeText={setAreaInHectares}
+          onChangeText={(text) => {
+            setAreaInHectares(text);
+            if (error.includes('Area in Hectares')) setError('');
+          }}
           placeholder="Enter area in hectares"
           placeholderTextColor="gray"
           keyboardType="numeric"
+          returnKeyType="next"
+          onSubmitEditing={() => Keyboard.dismiss()}
         />
 
+        {/* Crop Type - Now a Dropdown */}
         <Text style={styles.label}>Crop Type</Text>
-        <TextInput
-          style={styles.input}
-          value={cropType}
-          onChangeText={setCropType}
-          placeholder="Enter crop type"
-          placeholderTextColor="gray"
-        />
+        <View style={[styles.pickerContainer, error.includes('Crop Type') && styles.errorInput]}>
+          <Picker
+            selectedValue={cropType}
+            onValueChange={(itemValue) => {
+              setCropType(itemValue);
+              if (error.includes('Crop Type')) setError('');
+            }}
+            style={styles.picker}
+          >
+            <Picker.Item label="Select Crop Type" value="" enabled={false} style={{ color: 'gray' }} />
+            {cropTypeOptions.map((type, index) => (
+              <Picker.Item key={index.toString()} label={type} value={type} />
+            ))}
+          </Picker>
+        </View>
 
+        {/* Query */}
         <Text style={styles.label}>Query</Text>
         <TextInput
-          style={styles.input}
+          style={[styles.input, styles.textArea, error.includes('Query') && styles.errorInput]}
           value={query}
-          onChangeText={setQuery}
-          placeholder="Enter your query"
+          onChangeText={(text) => {
+            setQuery(text);
+            if (error.includes('Query')) setError('');
+          }}
+          placeholder="Enter your query or specific instructions"
           placeholderTextColor="gray"
+          multiline
+          numberOfLines={4}
+          returnKeyType="done"
+          onSubmitEditing={Keyboard.dismiss}
         />
 
+        {/* Submit Button */}
         <TouchableOpacity
-          style={{
-            backgroundColor: blue,
-            marginTop: verticalScale(50),
-          }}
-          onPress={handleSubmit}>
-          <Text
-            style={{
-              color: 'white',
-              fontSize: moderateScale(15),
-              textAlign: 'center',
-              padding: moderateScale(12),
-              borderRadius: moderateScale(4),
-            }}>
-            Submit
-          </Text>
+          style={[styles.submitButton, submitPending && styles.disabledButton]}
+          onPress={handleSubmit}
+          disabled={submitPending}
+          activeOpacity={0.7}
+        >
+          {submitPending ? (
+            <ActivityIndicator color="white" size="small" />
+          ) : (
+            <Text style={styles.submitButtonText}>Submit Request</Text>
+          )}
         </TouchableOpacity>
-      </View>
-    </View>
+      </ScrollView>
+
+      {/* Snackbar for messages */}
+      <Snackbar
+        visible={snackbarVisible}
+        onDismiss={() => setSnackbarVisible(false)}
+        duration={Snackbar.DURATION_SHORT}
+        style={[styles.snackbar, error ? styles.snackbarError : styles.snackbarSuccess]}
+        action={{
+          label: 'Dismiss',
+          onPress: () => setSnackbarVisible(false),
+        }}
+      >
+        {error ? error : 'Smart irrigation request submitted successfully!'}
+      </Snackbar>
+    </KeyboardAvoidingView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 16,
+    backgroundColor: '#F8FAFC', // Light background for the whole screen
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: blue,
+    elevation: 5,
+    height: verticalScale(80),
+    paddingTop: verticalScale(Platform.OS === 'ios' ? 40 : 30),
+    paddingHorizontal: horizontalScale(16), // Consistent padding
+    shadowColor: '#000', // Shadow for iOS
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  backButton: {
+    paddingRight: horizontalScale(10), // Space for the arrow
+  },
+  headerTitle: {
+    flex: 1, // Allows title to take available space and center
+    fontSize: moderateScale(18),
+    textAlign: 'center',
+    color: 'white',
+    fontFamily: 'Poppins-Medium',
+    marginRight: moderateScale(30), // Compensate for back button width
+  },
+  formScrollView: {
+    flex: 1,
+  },
+  formContentContainer: {
+    paddingHorizontal: horizontalScale(20),
+    paddingVertical: verticalScale(30),
   },
   label: {
-    fontSize: 16,
-    marginBottom: 8,
-    color: 'black', // Set label text color to black
+    fontSize: moderateScale(14),
+    marginBottom: verticalScale(8),
+    color: '#333', // Darker text for labels
+    fontFamily: 'Poppins-Regular',
   },
   input: {
-    height: 40,
-    borderColor: 'gray',
+    height: verticalScale(45), // Slightly taller input
+    borderColor: '#CCC', // Lighter border color
     borderWidth: 1,
-    marginBottom: 12,
-    paddingHorizontal: 8,
-    borderRadius: 4,
-    color: 'black', // Set input text color to black
+    borderRadius: moderateScale(8), // Rounded corners
+    paddingHorizontal: horizontalScale(12),
+    marginBottom: verticalScale(16), // More space between fields
+    fontSize: moderateScale(14),
+    color: '#333',
+    fontFamily: 'Poppins-Regular',
+    backgroundColor: 'white', // White background for inputs
   },
+  textArea: {
+    height: verticalScale(100), // Larger height for query
+    textAlignVertical: 'top',
+    marginTop:10 // Text starts from top
+  },
+  pickerContainer: { // Style for Picker wrapper to make it look like an input field
+    borderWidth: 1,
+    borderColor: '#CCC',
+    borderRadius: moderateScale(8),
+    marginBottom: verticalScale(16),
+    backgroundColor: 'white',
+    overflow: 'hidden', // Ensures picker content stays within bounds
+  },
+  picker: {
+    height: verticalScale(52), // Match input height
+    color: '#333',
+    fontFamily: 'Poppins-Regular',
+    // On iOS, backgroundColor can help ensure proper display
+    backgroundColor: 'white',
+  },
+  pickerItem: { // Style for individual picker items (iOS only)
+    fontSize: moderateScale(14),
+    fontFamily: 'Poppins-Regular',
+  },
+  submitButton: {
+    backgroundColor: blue,
+    borderRadius: moderateScale(10), // More rounded button
+    paddingVertical: verticalScale(14), // Taller button
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: verticalScale(30), // More margin before button
+    elevation: 3, // Android shadow
+    shadowColor: '#000', // iOS shadow
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.23,
+    shadowRadius: 2.62,
+  },
+  submitButtonText: {
+    color: 'white',
+    fontSize: moderateScale(16),
+    fontFamily: 'Poppins-SemiBold', // Bolder text for button
+  },
+  disabledButton: {
+    backgroundColor: '#A0A0A0', // Grey out when disabled
+    opacity: 0.7,
+  },
+  snackbar: {
+    marginHorizontal: horizontalScale(20),
+    marginBottom: verticalScale(10), // Space from bottom
+    borderRadius: moderateScale(8),
+  },
+  snackbarSuccess: {
+    backgroundColor: 'green',
+  },
+  snackbarError: {
+    backgroundColor: 'red',
+  },
+  errorInput: { // Existing style for error indication
+    borderColor: 'red',
+    borderWidth: 1.5,
+  }
 });
 
 export default SmartIrrigationScreen;

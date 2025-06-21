@@ -28,6 +28,7 @@ import { BASE_URL } from '../utils/Constants';
 import { useUserStore } from '../zustand/store';
 import { Snackbar } from 'react-native-paper';
 import { blue } from '../utils/Colors';
+import { blue400 } from 'react-native-paper/lib/typescript/styles/themes/v2/colors';
 
 // Define color palette for a professional look
 const colors = {
@@ -56,6 +57,7 @@ const CropCalenderCreateScreen = ({ navigation }) => {
   const [season, setSeason] = useState('');
   const [startDate, setStartDate] = useState('');
   const [seedVariety, setSeedVariety] = useState('');
+  const [cropVariety, setCropVariety] = useState(''); // State for Crop Variety
   const [isDatePickerVisible, setDatePickerVisible] = useState(false);
   const [isKeyboardVisible, setKeyboardVisible] = useState(false);
   const [location, setLocation] = useState('');
@@ -122,7 +124,7 @@ const CropCalenderCreateScreen = ({ navigation }) => {
         return false;
       }
       if (!fieldSize || isNaN(fieldSize) || parseFloat(fieldSize) <= 0) {
-        setError('Valid Field Size is required');
+        setError('Field size should be a positive number');
         return false;
       }
       if (!location.trim()) {
@@ -139,6 +141,10 @@ const CropCalenderCreateScreen = ({ navigation }) => {
       }
       if (!seedVariety.trim()) {
         setError('Seed Variety is required');
+        return false;
+      }
+      if (!cropVariety.trim()) { // Validation for Crop Variety
+        setError('Crop Variety is required');
         return false;
       }
     }
@@ -159,61 +165,92 @@ const CropCalenderCreateScreen = ({ navigation }) => {
 
   // Create crop calendar
   const createOwnCCR = async () => {
-    if (!validateStep()) return;
+    if (!validateStep()) {
+      setSnackbarVisible(true); // Show snackbar for validation errors
+      return;
+    }
+
     setCreatePending(true);
+
     try {
       if (!BASE_URL) {
         throw new Error('BASE_URL is not defined');
       }
       if (!userData?.token) {
-        throw new Error('User token is not available');
+        throw new Error('User token is not available. Please log in again.');
       }
-      const url = `${BASE_URL}/farmer/cropcalendar`;
-      const startDateISO = new Date(startDate).toISOString();
-      const data = {
-        projectName: projectTitle,
-        projectDescription,
-        cropName,
+
+      const payload = {
+        projectName: projectTitle.trim(),
+        projectDescription: projectDescription.trim(),
+        cropName: cropName.trim(),
         cropType,
         fieldSize: parseFloat(fieldSize),
-        location,
-        cropVariety: seedVariety,
+        location: location.trim(),
+        seedVariety: seedVariety.trim(),
+        cropVariety: cropVariety.trim(), // Include cropVariety in the payload
         season,
-        startDate: startDateISO,
+        startDate: new Date(startDate).toISOString(),
       };
-      const cleanedToken = userData.token.replace(/"/g, '');
 
-      
+      // Additional validation to catch issues before API call
+      if (!payload.projectName || !payload.projectDescription || !payload.cropName || !payload.seedVariety || !payload.cropVariety || !payload.location) {
+        throw new Error('All text fields must be non-empty.');
+      }
+      if (isNaN(payload.fieldSize) || payload.fieldSize <= 0) {
+        throw new Error('Field size must be a positive number.');
+      }
+      // Ensure cropType and season match allowed options
+      if (!cropTypeOptions.includes(payload.cropType)) {
+        throw new Error(`Invalid crop type selected: ${payload.cropType}. Allowed: ${cropTypeOptions.join(', ')}`);
+      }
+      if (!seasonOptions.includes(payload.season)) {
+        throw new Error(`Invalid season selected: ${payload.season}. Allowed: ${seasonOptions.join(', ')}`);
+      }
+      if (isNaN(new Date(startDate).getTime())) {
+        throw new Error('Invalid start date.');
+      }
+
+      const cleanedToken = userData.token.replace(/"/g, '');
+      const url = `${BASE_URL}/farmer/cropcalendar`;
+
+      console.log('Request Payload:', JSON.stringify(payload, null, 2));
+      console.log('Token:', cleanedToken);
+
       const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'x-access-token': cleanedToken,
         },
-        body: JSON.stringify(data),
+        body: JSON.stringify(payload),
       });
-      
-      console.log(data,cleanedToken);
-      console.log(response);
+
+      const responseBody = await response.json();
+      console.log('Response:', JSON.stringify(responseBody, null, 2));
+
       if (!response.ok) {
-        throw new Error(`HTTP error! Status: ${response.status}`);
+        const errorMessage = responseBody.message || JSON.stringify(responseBody) || 'Unknown error';
+        throw new Error(`HTTP error! Status: ${response.status}, Message: ${errorMessage}`);
       }
-      const result = await response.json();
-      if (result?.response?.id) {
+
+      if (responseBody?.response?.id) {
         setSnackbarVisible(true);
+        setError(''); // Clear any previous error on success
         setTimeout(() => {
           if (navigation.canGoBack()) {
-            navigation.navigate('Calendar', { id: result.response.id });
+            navigation.navigate('Calendar', { id: responseBody.response.id });
           } else {
-            console.warn('Calendar navigation not available');
+            console.warn('Navigation not available');
           }
         }, 1500);
       } else {
-        throw new Error('Invalid response from server');
+        throw new Error('Invalid response: No ID returned from server.');
       }
     } catch (error) {
-      console.error('Error creating CCR:', error);
-      setError('Failed to create crop calendar. Please try again.');
+      console.error('Error creating CCR:', error.message);
+      setError(`Failed to create crop calendar: ${error.message}`);
+      setSnackbarVisible(true);
     } finally {
       setCreatePending(false);
     }
@@ -221,7 +258,10 @@ const CropCalenderCreateScreen = ({ navigation }) => {
 
   // Navigation between steps
   const handleNextStep = () => {
-    if (!validateStep()) return;
+    if (!validateStep()) {
+      setSnackbarVisible(true); // Show snackbar for validation errors
+      return;
+    }
     if (step < 2) {
       slideOffset.value = withTiming(-400, { duration: 300 });
       setTimeout(() => {
@@ -270,7 +310,7 @@ const CropCalenderCreateScreen = ({ navigation }) => {
           editable={false}
           placeholderTextColor={colors.textSecondary}
         />
-        <MaterialIcons name="calendar-today" size={24} color={blue} />
+        <MaterialIcons name="calendar-today" size={24} color={blue} style={{ paddingHorizontal: horizontalScale(10) }} />
       </TouchableOpacity>
       <DateTimePickerModal
         isVisible={isDatePickerVisible}
@@ -355,7 +395,7 @@ const CropCalenderCreateScreen = ({ navigation }) => {
                 }}
                 style={styles.picker}
               >
-                <Picker.Item label="Select crop type" value="" enabled={false} />
+                <Picker.Item label="Select crop type" value="" enabled={false} style={{ color: colors.textSecondary }} />
                 {cropTypeOptions.map((type, index) => (
                   <Picker.Item key={index.toString()} label={type} value={type} />
                 ))}
@@ -365,13 +405,13 @@ const CropCalenderCreateScreen = ({ navigation }) => {
           <View style={styles.inputContainer}>
             <Text style={styles.label}>Field Size (acres)</Text>
             <TextInput
-              style={[styles.textInput, error.includes('Field Size') && styles.errorInput]}
+              style={[styles.textInput, error.includes('Field size') && styles.errorInput]}
               placeholder="Enter field size"
               placeholderTextColor={colors.textSecondary}
               value={fieldSize}
               onChangeText={(text) => {
                 setFieldSize(text);
-                if (error.includes('Field Size')) setError('');
+                if (error.includes('Field size')) setError('');
               }}
               keyboardType="numeric"
               returnKeyType="next"
@@ -404,7 +444,7 @@ const CropCalenderCreateScreen = ({ navigation }) => {
                 }}
                 style={styles.picker}
               >
-                <Picker.Item label="Select season" value="" enabled={false} />
+                <Picker.Item label="Select season" value="" enabled={false} style={{ color: colors.textSecondary }} />
                 {seasonOptions.map((type, index) => (
                   <Picker.Item key={index.toString()} label={type} value={type} />
                 ))}
@@ -422,6 +462,21 @@ const CropCalenderCreateScreen = ({ navigation }) => {
               onChangeText={(text) => {
                 setSeedVariety(text);
                 if (error.includes('Seed Variety')) setError('');
+              }}
+              returnKeyType="next"
+              onSubmitEditing={Keyboard.dismiss}
+            />
+          </View>
+          <View style={styles.inputContainer}>
+            <Text style={styles.label}>Crop Variety</Text>
+            <TextInput
+              style={[styles.textInput, error.includes('Crop Variety') && styles.errorInput]}
+              placeholder="Enter crop variety"
+              placeholderTextColor={colors.textSecondary}
+              value={cropVariety}
+              onChangeText={(text) => {
+                setCropVariety(text);
+                if (error.includes('Crop Variety')) setError('');
               }}
               returnKeyType="done"
               onSubmitEditing={Keyboard.dismiss}
@@ -489,13 +544,6 @@ const CropCalenderCreateScreen = ({ navigation }) => {
         </View>
       </View>
 
-      {/* Error Message */}
-      {error && (
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>{error}</Text>
-        </View>
-      )}
-
       {/* Form Content */}
       {renderStepContent()}
 
@@ -533,13 +581,13 @@ const CropCalenderCreateScreen = ({ navigation }) => {
         visible={snackbarVisible}
         onDismiss={() => setSnackbarVisible(false)}
         duration={3000}
-        style={styles.snackbar}
+        style={[styles.snackbar, error ? { backgroundColor: colors.error } : { backgroundColor: colors.secondary }]}
         action={{
           label: 'Dismiss',
           onPress: () => setSnackbarVisible(false),
         }}
       >
-        Crop calendar created successfully!
+        {error ? error : 'Crop calendar created successfully!'}
       </Snackbar>
     </KeyboardAvoidingView>
   );
@@ -549,6 +597,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  buttonText:{
+    color:colors.white
   },
   header: {
     flexDirection: 'row',
@@ -711,12 +762,7 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
     backgroundColor: colors.textSecondary,
-  },
-  buttonText: {
-    color: colors.white,
-    fontSize: moderateScale(14),
-    fontFamily: 'Poppins-Medium',
-    marginHorizontal: horizontalScale(4),
+    opacity: 0.7,
   },
   errorContainer: {
     paddingHorizontal: horizontalScale(20),
@@ -732,9 +778,9 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins-Regular',
   },
   snackbar: {
-    backgroundColor: colors.secondary,
     marginHorizontal: horizontalScale(20),
     borderRadius: moderateScale(8),
+    marginBottom: verticalScale(10), // Adjust if needed to not overlap buttons
   },
 });
 

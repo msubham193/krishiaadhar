@@ -17,6 +17,7 @@ import SoilHealthMapScreen from '../screens/SoilHealthMapScreen';
 import TermsAndPrivacypolicies from '../screens/Terms&Privacypolicies';
 import CropHealthMonitor from '../screens/CropHealthScreen';
 import ExpertVisitScreen from '../screens/ExpertVisitScreen';
+import SubmissionSuccessScreen from '../screens/SubmissinScreen';
 const Stack = createNativeStackNavigator();
 
 const Navigation = () => {
@@ -129,6 +130,10 @@ const Navigation = () => {
           }}
           component={ExpertVisitScreen}
         />
+
+        <Stack.Screen name='SubmissionSuccess' options={{
+          headerShown:false
+        }} component={SubmissionSuccessScreen}/>
 
         {/* <Stack.Screen
           name="Calendar"
