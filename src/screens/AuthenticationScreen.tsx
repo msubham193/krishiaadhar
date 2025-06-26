@@ -11,6 +11,7 @@ import {
   TouchableWithoutFeedback,
   Keyboard,
   Linking,
+  Animated,
 } from 'react-native';
 import React, {useEffect, useState} from 'react';
 import {blue, lightBlue, secondary_color} from '../utils/Colors';

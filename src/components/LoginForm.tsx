@@ -13,7 +13,6 @@ import {horizontalScale, moderateScale, verticalScale} from '../utils/metrics';
 import {blue, lightBlue} from '../utils/Colors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {useNavigation} from '@react-navigation/native';
-import {RotateInUpLeft} from 'react-native-reanimated';
 import {BASE_URL} from '../utils/Constants';
 import {useUserStore} from '../zustand/store';
 
@@ -27,7 +26,7 @@ const LoginForm = ({setIsRegistering, role}) => {
 
   const navigation = useNavigation();
 
-  console.log(RotateInUpLeft);
+
 
   const handleLogin = async () => {
     setLoading(true);

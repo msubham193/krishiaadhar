@@ -1,3 +1,4 @@
+
 /* eslint-disable react/self-closing-comp */
 /* eslint-disable eqeqeq */
 /* eslint-disable react-native/no-inline-styles */
@@ -14,6 +15,8 @@ import {
   Keyboard,
   Platform,
   Modal,
+  Animated, // Import Animated from react-native
+  FlatList,
 } from 'react-native';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import Ionicons from 'react-native-vector-icons/Ionicons';
