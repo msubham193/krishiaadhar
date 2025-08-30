@@ -1,6 +1,7 @@
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
+apply plugin: 'com.google.gms.google-services'
 
 react {
     autolinkLibrariesWithApp()
@@ -20,21 +21,12 @@ android {
         applicationId "com.krishiaadhar"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 11
-        versionName "1.8"
+        versionCode 15
+        versionName "2.2"
 
-        externalNativeBuild {
-         cmake {
-            arguments "-DANDROID_STL=c++_shared", "-DANDROID_TOOLCHAIN=clang"
-            cppFlags "-std=c++20 -frtti -fexceptions"
-        }
-        }
-    }
-
-    // ✅ Added this block to activate cppFlags without needing CMakeLists.txt
-    externalNativeBuild {
-        cmake {
-            version "3.22.1"
+        // ✅ Support both 32-bit and 64-bit
+        ndk {
+            abiFilters "armeabi-v7a", "arm64-v8a"
         }
     }
 
@@ -60,11 +52,26 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            shrinkResources true
             signingConfig signingConfigs.release
-            minifyEnabled enableProguardInReleaseBuilds
-            minifyEnabled true
+
+            // 🚫 Disable these temporarily for high-end debugging
+            minifyEnabled false
+            shrinkResources false
+
+            // ✅ Uncomment if you want ProGuard in production
+            // minifyEnabled enableProguardInReleaseBuilds
+            // shrinkResources true
+
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+        }
+    }
+
+    // ✅ Optional: only if you have C++ native modules
+    externalNativeBuild {
+        cmake {
+            version "3.22.1"
+            // arguments "-DANDROID_STL=c++_shared", "-DANDROID_TOOLCHAIN=clang"
+            // cppFlags "-std=c++20 -frtti -fexceptions"
         }
     }
 }
@@ -73,6 +80,8 @@ apply from: file("../../node_modules/react-native-vector-icons/fonts.gradle")
 
 dependencies {
     implementation("com.facebook.react:react-android")
+       implementation platform('com.google.firebase:firebase-bom:32.2.3')
+    implementation 'com.google.firebase:firebase-messaging'
 
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")
@@ -81,7 +90,7 @@ dependencies {
     }
 }
 
-// Optional: Task to print NDK path for verification
+// Optional: Print current NDK path
 task printNdkVersion {
     doLast {
         println "NDK Path: ${android.ndkDirectory}"

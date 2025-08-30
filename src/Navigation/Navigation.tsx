@@ -1,7 +1,7 @@
-import {View, Text, StatusBar} from 'react-native';
+import { View, Text, StatusBar } from 'react-native';
 import React from 'react';
-import {createNativeStackNavigator} from '@react-navigation/native-stack';
-import {NavigationContainer} from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { NavigationContainer } from '@react-navigation/native';
 import SpalshScreen from '../screens/SpalshScreen';
 
 import Main from '../screens/Main';
@@ -18,6 +18,8 @@ import TermsAndPrivacypolicies from '../screens/Terms&Privacypolicies';
 import CropHealthMonitor from '../screens/CropHealthScreen';
 import ExpertVisitScreen from '../screens/ExpertVisitScreen';
 import SubmissionSuccessScreen from '../screens/SubmissinScreen';
+import CropCalendarScreen2 from '../screens/CropCalendar2';
+import NotificationScreen from '../screens/NotificationScreen';
 const Stack = createNativeStackNavigator();
 
 const Navigation = () => {
@@ -31,19 +33,19 @@ const Navigation = () => {
       <Stack.Navigator>
         <Stack.Screen
           name="Spalsh"
-          options={{headerShown: false}}
+          options={{ headerShown: false }}
           component={SpalshScreen}
         />
 
         <Stack.Screen
           name="Welcome"
-          options={{headerShown: false}}
+          options={{ headerShown: false }}
           component={WelcomeScreen}
         />
 
         <Stack.Screen
           name="Authentication"
-          options={{headerShown: false}}
+          options={{ headerShown: false }}
           component={AuthenticationScreen}
         />
         <Stack.Screen
@@ -75,6 +77,12 @@ const Navigation = () => {
             headerShown: false,
           }}
           component={YourCropCalenderScreen}
+        />
+
+        <Stack.Screen
+          name="CropCalendarView"
+          component={CropCalendarScreen2}
+          options={{ headerShown: false }}
         />
 
         <Stack.Screen
@@ -132,8 +140,12 @@ const Navigation = () => {
         />
 
         <Stack.Screen name='SubmissionSuccess' options={{
-          headerShown:false
-        }} component={SubmissionSuccessScreen}/>
+          headerShown: false
+        }} component={SubmissionSuccessScreen} />
+
+        <Stack.Screen name="notification" options={{
+          headerShown: false
+        }} component={NotificationScreen} />
 
         {/* <Stack.Screen
           name="Calendar"

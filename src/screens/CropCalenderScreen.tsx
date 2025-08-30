@@ -15,7 +15,7 @@ import {
   Keyboard,
   Platform,
   Modal,
-  Animated, // Import Animated from react-native
+ // Import Animated from react-native
   FlatList,
 } from 'react-native';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
@@ -30,7 +30,7 @@ import Animated, {
   withTiming,
   FadeIn,
 } from 'react-native-reanimated';
-import { FlatList } from 'react-native-gesture-handler';
+// import { FlatList } from 'react-native-gesture-handler';
 import CropDetailCard from '../components/CropDetails';
 import { Snackbar } from 'react-native-paper';
 import { Picker } from '@react-native-picker/picker';
@@ -578,7 +578,7 @@ const CropCalendarScreen = () => {
             <Text style={styles.errorText}>{error}</Text>
           </View>
         )}
-      
+
 
         {/* Action Buttons */}
         <View style={styles.buttonContainer}>
@@ -597,7 +597,7 @@ const CropCalendarScreen = () => {
               <Text style={styles.createButtonText}>Create a Crop Calendar</Text>
             </TouchableOpacity>
           </Animated.View>
-          <Animated.View entering={FadeIn.duration(200).delay(100)}>
+          {/* <Animated.View entering={FadeIn.duration(200).delay(100)}>
             <TouchableOpacity
               style={styles.createButton}
               onPress={() => {
@@ -609,7 +609,7 @@ const CropCalendarScreen = () => {
             >
               <Text style={styles.createButtonText}>Request Crop Calendar</Text>
             </TouchableOpacity>
-          </Animated.View>
+          </Animated.View> */}
           <Animated.View entering={FadeIn.duration(200).delay(200)}>
             <TouchableOpacity
               style={styles.createButton}
@@ -628,7 +628,7 @@ const CropCalendarScreen = () => {
         </View>
 
         {/* Floating Action Button */}
-        {ccrData.length > 0 && (
+        {/* {ccrData.length > 0 && (
           <Animated.View entering={FadeIn.duration(200)}>
             <TouchableOpacity
               style={styles.floatingButton}
@@ -642,7 +642,7 @@ const CropCalendarScreen = () => {
               <Ionicons name="add" size={30} color="#FFFFFF" />
             </TouchableOpacity>
           </Animated.View>
-        )}
+        )} */}
       </View>
 
       {/* Modal for Create/Request */}

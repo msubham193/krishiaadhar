@@ -1,5 +1,5 @@
 /* eslint-disable react-native/no-inline-styles */
-import React, {useState, useEffect} from 'react';
+import React, {useState, useEffect, useRef} from 'react';
 import {
   View,
   TextInput,
@@ -27,7 +27,6 @@ const RegisterForm = ({setIsRegistering, role}) => {
   const [name, setName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [email, setEmail] = useState('');
-
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -36,9 +35,34 @@ const RegisterForm = ({setIsRegistering, role}) => {
   const [token, setToken] = useState('');
   const [isCompleting, setIsCompleting] = useState(false);
   const [fetchLoc, isFetch] = useState(false);
+  
+  // OTP Related States
+  const [showOTPModal, setShowOTPModal] = useState(false);
+  const [otp, setOtp] = useState(['', '', '', '', '', '']);
+  const [isVerifyingOTP, setIsVerifyingOTP] = useState(false);
+  const [resendTimer, setResendTimer] = useState(30);
+  const [canResend, setCanResend] = useState(false);
+  const otpRefs = useRef([]);
+  
   const setUserData = useUserStore(state => state.setUserData);
-
   const navigation = useNavigation();
+
+  // Timer for OTP resend
+  useEffect(() => {
+    let interval;
+    if (showOTPModal && resendTimer > 0) {
+      interval = setInterval(() => {
+        setResendTimer(prev => {
+          if (prev <= 1) {
+            setCanResend(true);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [showOTPModal, resendTimer]);
 
   useEffect(() => {
     if (showProfileModal) {
@@ -49,21 +73,6 @@ const RegisterForm = ({setIsRegistering, role}) => {
   const fetchLocation = async () => {
     isFetch(true);
     fetchLocationFromApi(20.175243350000002, 85.70674392837967);
-    // Geolocation.getCurrentPosition(
-    //   position => {
-    //     const {latitude, longitude} = position.coords;
-
-    //     console.log(latitude);
-
-    //     isFetch(false);
-    //   },
-    //   error => {
-    //     isFetch(false);
-    //     console.log(error.code, error.message);
-    //     setLocation('Location not available');
-    //   },
-    //   {enableHighAccuracy: true, timeout: 15000, maximumAge: 10000},
-    // );
   };
 
   const fetchLocationFromApi = async (lat, lon) => {
@@ -79,25 +88,44 @@ const RegisterForm = ({setIsRegistering, role}) => {
         'location',
         JSON.stringify(json.features[0].properties.name),
       );
+      isFetch(false);
     } catch (error) {
       console.log(error);
+      isFetch(false);
       Alert.alert('Error', 'Unable to fetch location');
     }
   };
 
   const handleRegister = async () => {
-    if (!name || !phoneNumber || !password) {
-      Alert.alert('Error', 'Please fill all fields');
+    if (!name || !phoneNumber) {
+      Alert.alert('Error', 'Please fill all required fields');
       return;
     }
 
-    console.log(role);
+    if (role !== 'FARMER' && !email) {
+      Alert.alert('Error', 'Email is required for experts');
+      return;
+    }
+
     setIsLoading(true);
 
     let URL = '';
-    role === 'FARMER'
-      ? (URL = `${BASE_URL}/farmer`)
-      : (URL = `${BASE_URL}/expert`);
+    let requestBody = {};
+
+    if (role === 'FARMER') {
+      URL = `${BASE_URL}/auth/farmer/register`;
+      requestBody = {
+        username: name,
+        phoneNumber: phoneNumber,
+      };
+    } else {
+      URL = `${BASE_URL}/auth/expert/register`;
+      requestBody = {
+        username: name,
+        email: email,
+        phoneNumber: phoneNumber,
+      };
+    }
 
     try {
       const response = await fetch(URL, {
@@ -105,35 +133,147 @@ const RegisterForm = ({setIsRegistering, role}) => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body:
-          role === 'FARMER'
-            ? JSON.stringify({
-                name,
-                phoneNumber,
-                password,
-              })
-            : JSON.stringify({
-                name,
-                phoneNumber,
-                password,
-                email: email,
-              }),
+        body: JSON.stringify(requestBody),
       });
-      const data = await response.json();
-      console.log(data);
 
-      if (response.ok) {
-        console.log(data?.response);
-        setUserData(data?.response);
-        setToken(data?.response?.token);
-        await AsyncStorage.setItem('userData', JSON.stringify(data?.response));
-        // setShowProfileModal(true);
-        navigation.navigate('Main');
+      const data = await response.json();
+      console.log('Register response:', data);
+
+      if (response.ok && data.Status === 'Success') {
+        Alert.alert('Success', data.message || 'OTP sent successfully');
+        setShowOTPModal(true);
+        setResendTimer(30);
+        setCanResend(false);
       } else {
         Alert.alert('Error', data.message || 'Registration failed');
       }
     } catch (error) {
-      console.error(error);
+      console.error('Registration error:', error);
+      Alert.alert('Error', 'Something went wrong, please try again');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleOTPChange = (value, index) => {
+    if (value.length > 1) return; // Prevent multiple characters
+    
+    const newOTP = [...otp];
+    newOTP[index] = value;
+    setOtp(newOTP);
+
+    // Auto focus next input
+    if (value && index < 5) {
+      otpRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleOTPKeyPress = (key, index) => {
+    if (key === 'Backspace' && !otp[index] && index > 0) {
+      otpRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const handleVerifyOTP = async () => {
+    const otpString = otp.join('');
+    if (otpString.length !== 6) {
+      Alert.alert('Error', 'Please enter complete OTP');
+      return;
+    }
+
+    setIsVerifyingOTP(true);
+
+    let URL = '';
+    if (role === 'FARMER') {
+      URL = `${BASE_URL}/auth/farmer/authenticate`;
+    } else {
+      URL = `${BASE_URL}/auth/expert/authenticate`;
+    }
+
+    try {
+      const response = await fetch(URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          phoneNumber: phoneNumber,
+          otp: otpString,
+        }),
+      });
+
+      const data = await response.json();
+      console.log('OTP verification response:', data);
+
+      if (response.ok && data.Status === 'Account Verification Sucessfull') {
+        Alert.alert('Success', 'Account verified successfully');
+        setUserData({
+          token: data.token,
+          role: data.role,
+          name: data.name,
+        });
+        setToken(data.token);
+        await AsyncStorage.setItem('userData', JSON.stringify({
+          token: data.token,
+          role: data.role,
+          name: data.name,
+        }));
+        setShowOTPModal(false);
+        navigation.navigate('Main');
+      } else {
+        Alert.alert('Error', data.message || 'Invalid OTP');
+      }
+    } catch (error) {
+      console.error('OTP verification error:', error);
+      Alert.alert('Error', 'Something went wrong, please try again');
+    } finally {
+      setIsVerifyingOTP(false);
+    }
+  };
+
+  const handleResendOTP = async () => {
+    if (!canResend) return;
+
+    setIsLoading(true);
+    let URL = '';
+    let requestBody = {};
+
+    if (role === 'FARMER') {
+      URL = `${BASE_URL}/auth/farmer/register`;
+      requestBody = {
+        username: name,
+        phoneNumber: phoneNumber,
+      };
+    } else {
+      URL = `${BASE_URL}/auth/expert/register`;
+      requestBody = {
+        username: name,
+        email: email,
+        phoneNumber: phoneNumber,
+      };
+    }
+
+    try {
+      const response = await fetch(URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.Status === 'Success') {
+        Alert.alert('Success', 'OTP resent successfully');
+        setResendTimer(30);
+        setCanResend(false);
+        setOtp(['', '', '', '', '', '']); // Clear previous OTP
+      } else {
+        Alert.alert('Error', data.message || 'Failed to resend OTP');
+      }
+    } catch (error) {
+      console.error('Resend OTP error:', error);
       Alert.alert('Error', 'Something went wrong, please try again');
     } finally {
       setIsLoading(false);
@@ -204,7 +344,6 @@ const RegisterForm = ({setIsRegistering, role}) => {
       if (response.ok) {
         console.log(data?.response);
         await AsyncStorage.setItem('userData', JSON.stringify(data?.response));
-
         navigation.navigate('Main');
       } else {
         Alert.alert('Error', data.message || 'Update failed');
@@ -250,7 +389,7 @@ const RegisterForm = ({setIsRegistering, role}) => {
           <Feather
             name="mail"
             size={verticalScale(18)}
-            color={focusedInput === 'phone' ? blue : 'gray'}
+            color={focusedInput === 'email' ? blue : 'gray'}
           />
           <TextInput
             placeholder="Email"
@@ -288,30 +427,6 @@ const RegisterForm = ({setIsRegistering, role}) => {
         />
       </View>
 
-      {/* Password Input */}
-      <View
-        style={[
-          styles.inputContainer,
-          focusedInput === 'password' && styles.focusedInput,
-        ]}>
-        <Feather
-          name="lock"
-          size={verticalScale(18)}
-          color={focusedInput === 'password' ? blue : 'gray'}
-        />
-        <TextInput
-          placeholder="Password"
-          placeholderTextColor="gray"
-          textContentType="password"
-          style={styles.input}
-          value={password}
-          onChangeText={setPassword}
-          onFocus={() => setFocusedInput('password')}
-          onBlur={() => setFocusedInput('')}
-          secureTextEntry
-        />
-      </View>
-
       {/* Continue Button */}
       <TouchableOpacity
         style={styles.continueButton}
@@ -320,7 +435,7 @@ const RegisterForm = ({setIsRegistering, role}) => {
         {isLoading ? (
           <ActivityIndicator color="white" />
         ) : (
-          <Text style={styles.continueButtonText}>Continue</Text>
+          <Text style={styles.continueButtonText}>Send OTP</Text>
         )}
       </TouchableOpacity>
 
@@ -329,6 +444,68 @@ const RegisterForm = ({setIsRegistering, role}) => {
         style={styles.loginLink}>
         <Text style={styles.loginLinkText}>Already have an account? Login</Text>
       </TouchableOpacity>
+
+      {/* OTP Verification Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={showOTPModal}
+        onRequestClose={() => setShowOTPModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.otpModalContent}>
+            <View style={styles.otpHeader}>
+              <TouchableOpacity
+                onPress={() => setShowOTPModal(false)}
+                style={styles.backButton}>
+                <Feather name="arrow-left" size={24} color={blue} />
+              </TouchableOpacity>
+              <Text style={styles.otpTitle}>Verify OTP</Text>
+            </View>
+            
+            <Text style={styles.otpSubtitle}>
+              Enter the 6-digit code sent to {phoneNumber}
+            </Text>
+
+            <View style={styles.otpContainer}>
+              {otp.map((digit, index) => (
+                <TextInput
+                  key={index}
+                  ref={ref => otpRefs.current[index] = ref}
+                  style={styles.otpInput}
+                  value={digit}
+                  onChangeText={(value) => handleOTPChange(value, index)}
+                  onKeyPress={({nativeEvent}) => handleOTPKeyPress(nativeEvent.key, index)}
+                  keyboardType="numeric"
+                  maxLength={1}
+                  textAlign="center"
+                />
+              ))}
+            </View>
+
+            <TouchableOpacity
+              style={[styles.verifyButton, isVerifyingOTP && styles.disabledButton]}
+              onPress={handleVerifyOTP}
+              disabled={isVerifyingOTP}>
+              {isVerifyingOTP ? (
+                <ActivityIndicator color="white" />
+              ) : (
+                <Text style={styles.verifyButtonText}>Verify OTP</Text>
+              )}
+            </TouchableOpacity>
+
+            <View style={styles.resendContainer}>
+              <Text style={styles.resendText}>Didn't receive the code? </Text>
+              <TouchableOpacity
+                onPress={handleResendOTP}
+                disabled={!canResend}>
+                <Text style={[styles.resendLink, !canResend && styles.disabledText]}>
+                  {canResend ? 'Resend' : `Resend in ${resendTimer}s`}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Profile Completion Modal */}
       <Modal
@@ -424,7 +601,6 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(13),
     paddingHorizontal: horizontalScale(10),
     color: 'black',
-    // backgroundColor:'red'
   },
   continueButton: {
     backgroundColor: blue,
@@ -454,6 +630,94 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  otpModalContent: {
+    backgroundColor: 'white',
+    borderRadius: 20,
+    padding: 25,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+    width: '90%',
+  },
+  otpHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    marginBottom: 20,
+  },
+  backButton: {
+    padding: 5,
+  },
+  otpTitle: {
+    flex: 1,
+    fontSize: moderateScale(18),
+    fontFamily: 'Poppins-SemiBold',
+    textAlign: 'center',
+    marginLeft: -34, // Compensate for back button width
+  },
+  otpSubtitle: {
+    fontSize: moderateScale(14),
+    fontFamily: 'Poppins-Regular',
+    color: 'gray',
+    textAlign: 'center',
+    marginBottom: 30,
+  },
+  otpContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginBottom: 30,
+  },
+  otpInput: {
+    width: 45,
+    height: 50,
+    borderWidth: 2,
+    borderColor: lightBlue,
+    borderRadius: 10,
+    fontSize: moderateScale(18),
+    fontFamily: 'Poppins-SemiBold',
+    color: blue,
+  },
+  verifyButton: {
+    backgroundColor: blue,
+    paddingVertical: verticalScale(12),
+    paddingHorizontal: horizontalScale(30),
+    borderRadius: 10,
+    width: '100%',
+    alignItems: 'center',
+  },
+  verifyButtonText: {
+    color: 'white',
+    fontFamily: 'Poppins-SemiBold',
+    fontSize: moderateScale(16),
+  },
+  disabledButton: {
+    opacity: 0.6,
+  },
+  resendContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  resendText: {
+    fontSize: moderateScale(14),
+    fontFamily: 'Poppins-Regular',
+    color: 'gray',
+  },
+  resendLink: {
+    fontSize: moderateScale(14),
+    fontFamily: 'Poppins-SemiBold',
+    color: blue,
+  },
+  disabledText: {
+    color: 'gray',
   },
   modalContent: {
     backgroundColor: 'white',
